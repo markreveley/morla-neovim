@@ -7,7 +7,7 @@ M.defaults = {
   -- CLAUDE.md, hooks and permission rules out of the call (ARCHITECTURE D2).
   cmd = {
     'claude', '-p',
-    '--model', 'haiku',
+    '--model', 'sonnet', -- Haiku misnumbers lines after an undo (md/tested/2026-11-05-1915-live.md)
     '--tools', '',
     '--setting-sources', '',
     '--strict-mcp-config',
@@ -22,6 +22,7 @@ M.defaults = {
   examples = 8, -- past translations sent with each request
   recent_commands = 20, -- lines of `:` history sent with each request
   selection_lines = 20, -- lines of the last visual selection sent
+  buffer_lines = 300, -- lines of the buffer sent, numbered: all of it if it fits, else a window around the cursor
 }
 
 M.options = vim.deepcopy(M.defaults)

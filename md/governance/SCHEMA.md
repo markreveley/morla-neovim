@@ -5,28 +5,48 @@
 ## 1. The history file
 
 `stdpath('data')/morla/history.jsonl` (option `history_file`): one JSON
-object per line, appended when a translation runs (ARCHITECTURE D4), never
-rewritten. Example, `tests/fixtures/history.jsonl`, loaded by
-`tests/run.lua`:
+object per line, never rewritten. A line is a **run**, appended when a
+translation runs (ARCHITECTURE D4), or a **mark**, appended when the
+operator says a run was wrong (ARCHITECTURE D10). Example,
+`tests/fixtures/history.jsonl`, loaded by `tests/run.lua`: a run, a failed
+run, a mark on the first run, and the retry that replaced it.
 
 ```json
-{"ts":"2026-11-05T18:02:11Z","cwd":"~/dev/repos/notes","filetype":"markdown","instruction":"delete every line containing TODO","generated":"g/TODO/d","command":"g/TODO/d","ok":true}
-{"ts":"2026-11-05T18:04:40Z","cwd":"~/dev/repos/notes","filetype":"markdown","instruction":"sort the selected lines","generated":"'<,'>sort u","command":"'<,'>sort","ok":false,"error":"E20: Mark not set"}
+{"id":"20261105T180211-a1-1","ts":"2026-11-05T18:02:11Z","cwd":"~/dev/repos/notes","filetype":"markdown","instruction":"delete every line containing TODO","generated":"g/TODO.*/d","command":"g/TODO.*/d","explain":"deletes every line with TODO","ok":true}
+{"id":"20261105T180440-b2-2","ts":"2026-11-05T18:04:40Z","cwd":"~/dev/repos/notes","filetype":"markdown","instruction":"sort the selected lines","generated":"'<,'>sort u","command":"'<,'>sort","explain":"sorts the selection, dropping duplicates","ok":false,"error":"E20: Mark not set"}
+{"ts":"2026-11-05T18:05:02Z","marks":"20261105T180211-a1-1","ok":false,"note":"deleted the headings too"}
+{"id":"20261105T180519-c3-3","ts":"2026-11-05T18:05:19Z","cwd":"~/dev/repos/notes","filetype":"markdown","instruction":"delete every line containing TODO","generated":"undo | g/^- TODO/d","command":"undo | g/^- TODO/d","explain":"undoes that, then deletes only TODO list items","retry_of":"20261105T180211-a1-1","ok":true}
 ```
+
+A run:
 
 | field | type | meaning |
 |---|---|---|
+| `id` | string | unique; what a mark names. Absent in runs the first version wrote |
 | `ts` | string | when it ran, UTC, ISO 8601 |
 | `cwd` | string | Neovim's working directory, `~` for home |
 | `filetype` | string | filetype of the window `q:` was opened from; `""` for none |
-| `instruction` | string | what the operator asked for |
+| `instruction` | string | what the operator asked for; for a retry, the original instruction, not the complaint |
 | `generated` | string | the model's command |
 | `command` | string | what ran: `generated`, or the operator's edit of it |
+| `explain` | string | the model's plain-English account of the command; absent when the reply had none |
 | `ok` | boolean | `v:errmsg` was empty after it ran |
 | `error` | string | `v:errmsg`, present only when `ok` is false |
+| `changed` | boolean | the origin buffer's `changedtick` moved; absent when the buffer was gone |
+| `retry_of` | string | the `id` of the run this one replaced after a complaint |
 
-A line that is not JSON, or lacks `instruction` or `command`, is skipped on
-reading.
+A mark:
+
+| field | type | meaning |
+|---|---|---|
+| `ts` | string | when the operator complained |
+| `marks` | string | the `id` of the run it marks |
+| `ok` | boolean | always `false` |
+| `note` | string | the operator's words |
+
+On reading, a mark sets its run's `ok` to false and adds its `note`. A line
+that is not JSON, or is neither a run (with `instruction` and `command`)
+nor a mark, is skipped.
 
 ## 2. Options
 
@@ -35,13 +55,14 @@ reading.
 
 | key | default | meaning |
 |---|---|---|
-| `cmd` | `claude -p --model haiku --tools "" --setting-sources "" …` | the model call, as a list; morla appends `--system-prompt <text>`. Replaces the default whole |
+| `cmd` | `claude -p --model sonnet --tools "" --setting-sources "" …` | the model call, as a list; morla appends `--system-prompt <text>`. Replaces the default whole |
 | `timeout` | `60000` | ms before the call is stopped |
 | `key` | `"<C-g>"` | translate in `q:`; on the `:` line, hand the line to `q:`. `false` for no key |
 | `history_file` | see §1 | |
-| `examples` | `8` | past translations sent with a request |
+| `examples` | `8` | past runs sent with a request |
 | `recent_commands` | `20` | `:` history lines sent |
 | `selection_lines` | `20` | lines of the last visual selection sent |
+| `buffer_lines` | `300` | lines of the buffer sent, numbered: all of it if it fits, else a window around the cursor. `0` sends none |
 
 ## 3. Readers
 

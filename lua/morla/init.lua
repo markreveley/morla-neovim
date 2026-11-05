@@ -15,10 +15,13 @@ local state = {
   origin_win = nil, -- the window `q:` was opened from
   translate_on_enter = false, -- set by the `:` line key, read by CmdwinEnter
   pending = nil, -- the last translation, until it runs or is dropped
-  failure = nil, -- the last translation that ran with an error
+  last = nil, -- the last translation that ran this session: { id, instruction, command, ok, error, changed }
   hist = 0, -- `:` history number before the pending command could run
+  tick = nil, -- changedtick of the origin buffer at the same moment
 }
 M._state = state
+
+M.fix_text = 'That failed. Fix it.'
 
 local function notify(msg, level)
   vim.notify('morla: ' .. msg, level or vim.log.levels.INFO)
@@ -28,20 +31,47 @@ local function where(ctx)
   return { cwd = ctx.cwd, filetype = ctx.filetype }
 end
 
--- The request for one instruction. A line that is the command that just
--- failed asks for a fix instead.
+-- The request for one line. The line of the command that just failed asks
+-- for a fix; every request carries the last run, so the model can tell a
+-- complaint about it from a new instruction (feedback-and-explain D2).
 local function request(text, win)
   local ctx = context.gather(win)
-  local req = {
+  local last = state.last
+  if last and not last.ok and text == last.command then text = M.fix_text end
+  return {
     instruction = text,
     context = context.render(ctx),
     examples = history.examples(where(ctx), config.options.examples),
+    last = last and {
+      instruction = last.instruction, command = last.command, ok = last.ok, error = last.error, changed = last.changed,
+    },
+  }, ctx
+end
+
+-- What the reply means for the history: a complaint marks the last run
+-- wrong and the retry answers the original instruction (feedback-and-explain D3).
+local function accept(req, reply, ctx)
+  local p = {
+    instruction = req.instruction, generated = reply.command, explain = reply.explain, where = where(ctx),
+    origin_buf = ctx.buf,
   }
-  if state.failure and text == state.failure.command then
-    req.instruction = state.failure.instruction
-    req.failure = { command = state.failure.command, error = state.failure.error }
+  local last = state.last
+  if reply.feedback and last then
+    if last.ok then history.mark_wrong(last.id, req.instruction) end
+    p.instruction = last.instruction
+    p.retry_of = last.id
   end
-  return req, ctx
+  return p
+end
+
+-- The text beside a translated line: flags, then the explanation.
+function M.label(cmd, explain)
+  local flags = risk.check(cmd)
+  local parts = {}
+  if #flags > 0 then table.insert(parts, '⚠ ' .. table.concat(flags, ', ')) end
+  if explain then table.insert(parts, explain) end
+  if #parts == 0 then parts = { 'morla' } end
+  return table.concat(parts, ' · '), #flags > 0 and 'WarningMsg' or 'Comment'
 end
 
 local function mark(buf, row, text, hl)
@@ -60,9 +90,9 @@ function M.translate_cmdwin()
 
   local req, ctx = request(text, state.origin_win)
   vim.api.nvim_buf_clear_namespace(buf, ns, row, row + 1)
-  local id = mark(buf, row, req.failure and 'morla: fixing…' or 'morla: translating…', 'Comment')
+  local id = mark(buf, row, req.instruction == M.fix_text and 'morla: fixing…' or 'morla: translating…', 'Comment')
 
-  client.translate(req, function(cmd, err)
+  client.translate(req, function(reply, err)
     if not vim.api.nvim_buf_is_valid(buf) then return end -- `q:` was closed
     local pos = vim.api.nvim_buf_get_extmark_by_id(buf, ns, id, {})
     if not pos[1] then return end
@@ -71,13 +101,11 @@ function M.translate_cmdwin()
       mark(buf, pos[1], 'morla: ' .. err:gsub('\n.*', ''), 'ErrorMsg')
       return
     end
+    local cmd = reply.command
     vim.api.nvim_buf_set_lines(buf, pos[1], pos[1] + 1, false, { cmd })
-    local flags = risk.check(cmd)
-    local new = #flags > 0 and mark(buf, pos[1], '⚠ ' .. table.concat(flags, ', '), 'WarningMsg')
-      or mark(buf, pos[1], 'morla', 'Comment')
-    state.pending = {
-      buf = buf, mark = new, instruction = req.instruction, generated = cmd, where = where(ctx),
-    }
+    local new = mark(buf, pos[1], M.label(cmd, reply.explain))
+    state.pending = accept(req, reply, ctx)
+    state.pending.buf, state.pending.mark = buf, new
     local win = vim.api.nvim_get_current_win()
     if vim.api.nvim_win_get_buf(win) == buf and vim.api.nvim_win_get_cursor(win)[1] == pos[1] + 1 then
       vim.api.nvim_win_set_cursor(win, { pos[1] + 1, #cmd })
@@ -88,13 +116,13 @@ end
 -- `:Morla <instruction>`: translate, then put the command on the `:` line.
 function M.translate_to_cmdline(text)
   local req, ctx = request(vim.trim(text), vim.api.nvim_get_current_win())
-  notify(req.failure and 'fixing…' or 'translating…')
-  client.translate(req, function(cmd, err)
+  notify(req.instruction == M.fix_text and 'fixing…' or 'translating…')
+  client.translate(req, function(reply, err)
     if err then return notify(err, vim.log.levels.ERROR) end
-    local flags = risk.check(cmd)
-    if #flags > 0 then notify('⚠ ' .. table.concat(flags, ', '), vim.log.levels.WARN) end
-    state.pending = { instruction = req.instruction, generated = cmd, where = where(ctx) }
-    vim.api.nvim_feedkeys(':' .. cmd, 'n', false)
+    local label, hl = M.label(reply.command, reply.explain)
+    notify(label, hl == 'WarningMsg' and vim.log.levels.WARN or vim.log.levels.INFO)
+    state.pending = accept(req, reply, ctx)
+    vim.api.nvim_feedkeys(':' .. reply.command, 'n', false)
   end)
 end
 
@@ -113,30 +141,42 @@ local function check()
   local ran = vim.fn.histget(':', -1)
   if ran ~= p.generated and ran ~= p.final then return end
   local err = vim.v.errmsg
+  local b = p.origin_buf
+  local changed = nil
+  if b and state.tick and vim.api.nvim_buf_is_valid(b) then
+    changed = vim.api.nvim_buf_get_changedtick(b) ~= state.tick
+  end
   local rec = {
+    id = history.new_id(),
     ts = os.date('!%Y-%m-%dT%H:%M:%SZ'),
     cwd = p.where.cwd,
     filetype = p.where.filetype,
     instruction = p.instruction,
     generated = p.generated,
     command = ran,
+    explain = p.explain,
+    retry_of = p.retry_of,
     ok = err == '',
+    error = err ~= '' and err or nil,
+    changed = changed,
   }
-  if err ~= '' then rec.error = err end
   history.append(rec)
-  if err ~= '' then
-    state.failure = { instruction = p.instruction, command = ran, error = err }
+  state.last = {
+    id = rec.id, instruction = rec.instruction, command = ran, ok = rec.ok, error = rec.error, changed = changed,
+  }
+  if not rec.ok then
     local key = config.options.key
-    notify('that command failed. ' .. (key and ('In q:, press ' .. key .. ' on it to ask for a fix.') or ''),
+    notify('that command failed.'
+      .. (key and (' In q:, press ' .. key .. ' on it, or type what went wrong.') or ''),
       vim.log.levels.WARN)
-  else
-    state.failure = nil
   end
 end
 
 local function arm()
   if not state.pending then return end
   state.hist = vim.fn.histnr(':')
+  local b = state.pending.origin_buf
+  state.tick = (b and vim.api.nvim_buf_is_valid(b)) and vim.api.nvim_buf_get_changedtick(b) or nil
   vim.v.errmsg = ''
   vim.schedule(check)
 end
@@ -149,6 +189,7 @@ function M.pick_history()
     prompt = 'morla history',
     format_item = function(r)
       return (r.ok and '' or '✗ ') .. r.instruction .. '  →  ' .. r.command
+        .. (r.explain and ('  (' .. r.explain .. ')') or '')
     end,
   }, function(r)
     if r then vim.api.nvim_feedkeys(':' .. r.command, 'n', false) end

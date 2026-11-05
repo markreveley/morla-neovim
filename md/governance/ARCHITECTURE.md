@@ -1,13 +1,15 @@
 # morla-neovim: architecture
 
-> Status: built · 2026-11-05 · describes what is built (first version)
+> Status: built · 2026-11-05 · describes what is built (with feedback and explanations, D8–D12)
 
 ## 1. Thesis
 
 morla turns a plain-English instruction into one Ex command line, in place,
 in the window where Ex commands are already edited (`q:`), and never runs it:
-the operator reads the line and presses Enter. Each translation that runs is
-kept, and the ones that ran without error teach the next request.
+the operator, who need not read Vimscript, sees a plain-English account
+beside it and presses Enter. If it did the wrong thing they say so in plain
+English and get another try. Each translation that runs is kept, and the
+ones the operator kept teach the next request.
 
 ## 2. Parts
 
@@ -29,25 +31,33 @@ kept, and the ones that ran without error teach the next request.
    (`<C-g>`). On the `:` line the same key opens `q:` with the line (the
    `'cedit'` key) and continues there (D3).
 2. `context.gather` reads the window `q:` was opened from: file, filetype,
-   cursor line, last visual selection (up to 20 lines), the listed buffers,
-   the last 20 `:` commands, the working directory.
-3. `history.examples` picks up to 8 past translations that ran without
-   error, the same project and filetype first.
-4. If the line is the command that last failed, the request asks for a fix
-   and carries the error and the original instruction.
+   cursor position, the buffer's lines with their numbers (up to 300,
+   around the cursor; D12), the last visual selection (up to 20 lines), the
+   listed buffers, the last 20 `:` commands, the working directory.
+3. `history.examples` picks up to 8 past runs the operator kept (no error,
+   not marked wrong), the same project and filetype first.
+4. The request carries the last run of this session: its instruction,
+   command, and whether it failed, changed the buffer, or changed nothing
+   (D9). A line that is the command that just failed becomes "That failed.
+   Fix it."
 5. `client.translate` runs `claude -p` with the request on stdin, off the
    main loop. A mark at the end of the line says it is working.
-6. The reply replaces the line. A mark beside it shows `⚠` and the flags,
-   or `morla`.
+6. The reply is JSON: the command, a plain-English explanation, and whether
+   the line was about the last run (D8). The command replaces the line; the
+   mark beside it shows `⚠` and the flags, then the explanation (D11). If
+   the line was about the last run, that run is marked wrong and the new
+   command answers its instruction (D10).
 7. When `q:` closes or the `:` line is left, the `:` history number says
    whether a command ran. If it is the translation, or the operator's edit
-   of it, a record is appended with `ok` taken from `v:errmsg` (D4).
+   of it, a record is appended with `ok` from `v:errmsg` and `changed` from
+   the origin buffer's `changedtick` (D4).
 
 ## 4. Boundaries and invariants
 
 - morla never runs a command. Enter is the operator's.
 - The history file is only appended to.
-- The model sees the cursor line and the last selection, not whole files.
+- The model sees the buffer's lines (up to 300 around the cursor), never
+  other files' contents (D12).
 - The model call reads no CLAUDE.md, settings, hooks or MCP servers, has no
   tools, and keeps no session (D2).
 - No dependencies beyond Neovim 0.10 and the `claude` CLI (D7).
@@ -65,7 +75,10 @@ translation is wrong often enough to need one.
 
 ### D2. `claude -p` with settings, tools and MCP off, in a folder of its own
 
-The operator's Claude login, no API key. Measured on 5 Nov 2026 with
+The operator's Claude login, no API key. Sonnet by default: in the live run
+of 5 Nov 2026 (`../tested/2026-11-05-1915-live.md`) Haiku misnumbered lines
+after an undo and read "select" as "move", at the same speed (3 to 5 s).
+Measured the same day with
 Haiku: about 1.7 s a call with `--setting-sources ""`, 3.4 s without, and
 without it the operator's global CLAUDE.md reached the model. `--tools ""`
 because a translation needs none; the cache folder as working directory so
@@ -86,7 +99,9 @@ A translation the operator discards teaches nothing. When `q:` closes or the
 `:` line is left, the history number is noted and `v:errmsg` cleared; on the
 next tick, a higher number whose entry is the translation (or the line as
 the operator edited it) is a run, and an empty `v:errmsg` means it ran
-without error. JSON Lines, not SQLite: Neovim has no SQLite without a
+without error. `changed` compares the origin buffer's `changedtick` across
+the same moment, because a command with no error can still do nothing.
+JSON Lines, not SQLite: Neovim has no SQLite without a
 dependency, and the file stays readable and greppable.
 
 ### D5. Flags warn; nothing is blocked
@@ -107,6 +122,56 @@ fully costs about what writing this did.
 
 `vim.system` for the call, `vim.json` for the file, `vim.ui.select` for the
 picker (telescope or fzf-lua take it over when installed).
+
+
+### D8. The reply is one JSON object: command, explanation, feedback flag
+
+`{"command": "...", "explain": "...", "feedback": true|false}`. One call
+gives the command, a short account for someone who cannot read Vimscript,
+and whether the line was about the last run. A reply that is not JSON is
+read as a bare command with no explanation. Lost: a second call to explain
+(slower, and the same reply can say what it meant); keyword matching for
+complaints ("didn't", "rerun"), which misses "no, only the second one" and
+fires on "rerun the tests". From
+[feedback-and-explain D1](../plans/2026-11-05-feedback-and-explain/feedback-and-explain.md).
+
+### D9. The model sees the last run and judges whether the line is about it
+
+Every request carries the last run of this Neovim session (instruction,
+command, failed or not, changed the buffer or not). When the line is about
+it, the model answers the original instruction, and starts with `undo` if
+the last command changed text the wrong way. `<C-g>` on a failed command's
+line is the same case, sent as "That failed. Fix it." From
+feedback-and-explain D2.
+
+### D10. A complaint marks the last run wrong by appending
+
+The history stays append-only (§4). Each run has an `id`; a complaint
+appends a mark naming it (`SCHEMA.md` §1), and reading the file applies the
+marks, so a run the operator called wrong is never sent as an example. The
+retry records `retry_of` and the original instruction, pairing what was
+asked with what finally worked. A run that already failed is not marked
+again. From feedback-and-explain D3.
+
+### D11. The explanation sits beside the line, after the flags
+
+`⚠ shell · opens htop in a terminal split`. `:Morla` shows the same text as
+a message. The explanation is the model's account of its own command and
+can be wrong with it; the flags are computed from the command and do not
+depend on the model. From feedback-and-explain D4.
+
+### D12. The buffer's lines go with each request, numbered
+
+Up to 300 lines (`buffer_lines`): all of a shorter buffer, else a window
+around the cursor. Without them the model guessed at text it could not see
+(`Date:` for `**Date:**`) and wrote cursor-relative searches (`0/TODO/`,
+which searches from the cursor, not the top); with them it addresses lines
+by number (`7d`). Measured in `../tested/2026-11-05-1915-live.md`. This
+replaces the first version's rule that only the cursor line and the
+selection were sent: the lines go to the same Claude the operator already
+uses, from a file open in their own editor. Lost: sending only the cursor
+line, which kept requests small and failed on most structural edits. From
+feedback-and-explain D5.
 
 ---
 

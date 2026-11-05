@@ -23,6 +23,7 @@ function M.gather(win)
   local buf = vim.api.nvim_win_get_buf(win)
   local cursor = vim.api.nvim_win_get_cursor(win)
   local ctx = {
+    buf = buf, -- not sent; used to tell whether a run changed the buffer
     cwd = vim.fn.fnamemodify(vim.fn.getcwd(), ':~'),
     file = relname(buf),
     filetype = vim.bo[buf].filetype,
@@ -36,6 +37,15 @@ function M.gather(win)
     tabs = #vim.api.nvim_list_tabpages(),
     nvim = tostring(vim.version()),
   }
+
+  local total = ctx.lines
+  local n = opts.buffer_lines
+  if n > 0 then
+    local first = 1
+    if total > n then first = math.max(1, math.min(cursor[1] - math.floor(n / 2), total - n + 1)) end
+    local last = math.min(total, first + n - 1)
+    ctx.text = { from = first, to = last, lines = vim.api.nvim_buf_get_lines(buf, first - 1, last, false) }
+  end
 
   local s = vim.api.nvim_buf_get_mark(buf, '<')
   local e = vim.api.nvim_buf_get_mark(buf, '>')
@@ -75,6 +85,13 @@ function M.render(ctx)
     'Cursor line: ' .. ctx.current,
     string.format('%d window(s) in this tab, %d tab(s).', ctx.windows, ctx.tabs),
   }
+  if ctx.text then
+    table.insert(out, string.format('Buffer lines %d-%d of %d, each prefixed with its line number and a tab:',
+      ctx.text.from, ctx.text.to, ctx.lines))
+    for i, l in ipairs(ctx.text.lines) do
+      table.insert(out, (ctx.text.from + i - 1) .. '\t' .. clip(l, 300))
+    end
+  end
   if ctx.selection then
     table.insert(out, string.format('Last visual selection: lines %d-%d (use the range \'<,\'> for it):',
       ctx.selection.from, ctx.selection.to))

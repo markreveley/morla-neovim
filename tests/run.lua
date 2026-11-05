@@ -18,26 +18,43 @@ local function eq(got, want)
   end
 end
 
-test('parse: plain reply', function() eq(prompt.parse('g/TODO/d\n'), 'g/TODO/d') end)
-test('parse: colon and fence stripped', function()
-  eq(prompt.parse('```vim\n:%s/a/b/g\n```'), '%s/a/b/g')
+test('parse: JSON reply', function()
+  eq(prompt.parse('{"command": ":g/TODO/d", "explain": "deletes TODO lines", "feedback": false}'),
+    { command = 'g/TODO/d', explain = 'deletes TODO lines', feedback = false })
 end)
-test('parse: Command: prefix stripped', function() eq(prompt.parse('Command: :only'), 'only') end)
+test('parse: JSON in a fence, with text around it', function()
+  eq(prompt.parse('Here:\n```json\n{"command":"undo | 2d","explain":"undoes, then deletes line 2","feedback":true}\n```'),
+    { command = 'undo | 2d', explain = 'undoes, then deletes line 2', feedback = true })
+end)
+test('parse: JSON command holding an unpaired brace', function()
+  eq(prompt.parse('{"command":"s/{/[/","explain":"swaps a brace"}').command, 's/{/[/')
+end)
+test('parse: JSON without a command falls back to plain', function()
+  eq(prompt.parse('{"explain":"x"}'), { command = '{"explain":"x"}', feedback = false })
+end)
+test('parse: plain reply', function() eq(prompt.parse('g/TODO/d\n'), { command = 'g/TODO/d', feedback = false }) end)
+test('parse: colon and fence stripped', function()
+  eq(prompt.parse('```vim\n:%s/a/b/g\n```').command, '%s/a/b/g')
+end)
+test('parse: Command: prefix stripped', function() eq(prompt.parse('Command: :only').command, 'only') end)
 test('parse: several lines joined with |', function()
-  eq(prompt.parse('vsplit\nterminal'), 'vsplit | terminal')
+  eq(prompt.parse('vsplit\nterminal').command, 'vsplit | terminal')
 end)
 test('parse: empty is nil', function() eq(prompt.parse('  \n```\n```'), nil) end)
 
-test('build: examples, failure and instruction in order', function()
+test('build: context, examples, last run, instruction in order', function()
   local s = prompt.build({
-    instruction = 'delete todos', context = 'CTX',
+    instruction = "didn't work, rerun", context = 'CTX',
     examples = { { instruction = 'only pane', command = 'only' } },
-    failure = { command = 'g/TODO/dd', error = 'E492: Not an editor command' },
+    last = { instruction = 'delete todos', command = 'g/TODO/dd', ok = false, error = 'E492: Not an editor command' },
   })
   local a = s:find('CTX', 1, true)
   local b = s:find('Command: only', 1, true)
-  local c = s:find('E492', 1, true)
-  local d = s:find('Instruction: delete todos\nCommand:$')
+  local c = s:find('Last command run in this session:\nInstruction: delete todos\nCommand: g/TODO/dd\nResult: failed: E492', 1, true)
+  local d = s:find("Instruction: didn't work, rerun$")
+  local s2 = prompt.build({ instruction = 'x', context = 'C',
+    last = { instruction = 'set date', command = 'g/^Date/d', ok = true, changed = false } })
+  assert(s2:find('Result: ran without error but changed nothing in the buffer', 1, true), s2)
   assert(a and b and c and d and a < b and b < c and c < d, s)
 end)
 
@@ -76,14 +93,40 @@ test('history: append, load, rank, examples', function()
     { { instruction = 'one again', command = 'c1' }, { instruction = 'two', command = 'c2' } })
 end)
 
+test('history: a mark makes a run wrong, and drops it from examples', function()
+  local saved = config.options.history_file
+  config.options.history_file = vim.fn.tempname()
+  history.append({ id = 'r1', cwd = '~/a', filetype = 'lua', instruction = 'one', command = 'c1', ok = true })
+  history.append({ id = 'r2', cwd = '~/a', filetype = 'lua', instruction = 'two', command = 'c2', ok = true })
+  history.mark_wrong('r1', "didn't work")
+  local recs = history.load()
+  config.options.history_file = saved
+  eq(#recs, 2)
+  eq({ recs[1].ok, recs[1].note, recs[2].ok }, { false, "didn't work", true })
+end)
+
+test('history: ids are unique', function()
+  local a, b = history.new_id(), history.new_id()
+  assert(a ~= b, a)
+end)
+
 test('history: the SCHEMA.md example loads', function()
   local saved = config.options.history_file
   config.options.history_file = vim.fn.getcwd() .. '/tests/fixtures/history.jsonl'
   local recs = history.load()
   config.options.history_file = saved
-  eq(#recs, 2)
+  eq(#recs, 3)
   eq({ recs[2].generated, recs[2].command, recs[2].ok, recs[2].error },
     { "'<,'>sort u", "'<,'>sort", false, 'E20: Mark not set' })
+  eq({ recs[1].ok, recs[1].note }, { false, 'deleted the headings too' })
+  eq({ recs[3].retry_of, recs[3].instruction, recs[3].ok }, { recs[1].id, recs[1].instruction, true })
+end)
+
+test('label: flags first, then the explanation', function()
+  local morla = require('morla')
+  eq({ morla.label('%!sort', 'sorts the file') }, { '⚠ shell · sorts the file', 'WarningMsg' })
+  eq({ morla.label('g/x/d', 'deletes lines with x') }, { 'deletes lines with x', 'Comment' })
+  eq({ morla.label('only') }, { 'morla', 'Comment' })
 end)
 
 test('context: file, cursor, selection, history', function()
@@ -99,6 +142,11 @@ test('context: file, cursor, selection, history', function()
   eq(ctx.selection, { from = 2, to = 3, text = { 'a', 'b' } })
   local text = context.render(ctx)
   assert(text:find("lines 2-3", 1, true) and text:find('  only', 1, true), text)
+  assert(text:find('Buffer lines 1-4 of 4', 1, true) and text:find('\n3\tb\n', 1, true), text)
+  config.options.buffer_lines = 2
+  local w = context.gather().text
+  config.options.buffer_lines = config.defaults.buffer_lines
+  eq({ w.from, w.to, w.lines }, { 3, 4, { 'b', 'c' } })
 end)
 
 for _, t in ipairs(tests) do

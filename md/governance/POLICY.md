@@ -1,5 +1,44 @@
 # Policy
 
+> Status: in force · 2026-11-05 · the plugin's behaviour and how changes to it are checked
+
+## The plugin
+
+**P1. morla never runs a command it wrote.** It writes the command into
+`q:` or onto the `:` line; Enter is the operator's. *Why:* translations are
+wrong often enough that each needs a look, even a glance at the explanation
+(`tested/2026-11-05-1915-live.md`; ARCHITECTURE D1). *Checked by:*
+`tests/e2e.sh` ("still in q:"), review.
+
+**P2. The history file is only appended to.** A correction is a new line
+(a mark), never an edit. *Why:* marks name runs by `id`, and the file is the
+operator's record of what ran (ARCHITECTURE D10). *Checked by:* review;
+`lua/morla/history.lua` opens the file only to append or read.
+
+**P3. No dependencies beyond Neovim 0.10 and the `claude` CLI.** *Why:*
+nothing to install or keep in step (ARCHITECTURE D7). *Checked by:* review.
+
+## Changes
+
+**P4. Unit and end-to-end tests pass before a PR.**
+`nvim --headless --clean -l tests/run.lua && tests/e2e.sh`. *Why:* there is
+no CI. *Checked by:* the PR's author.
+
+**P5. A change to the prompt, the reply format or the default model is
+checked by a live run against `claude -p`, reported in `md/tested/`.**
+*Why:* the tests use a fake backend and cannot judge a translation.
+*Checked by:* review.
+
+**P6. A change to `SCHEMA.md` is named in its commit's first line and
+leaves older history files readable.** *Why:* the operator's config and
+history file are its readers (`SCHEMA.md` §3). *Checked by:* review;
+`tests/run.lua` loads the fixture.
+
+**P7. No tracked file names a private project.** The repo is public.
+*Why:* the operator's other repos are not all public. *Checked by:* a scan
+of tracked files against the operator's private-terms list before a push
+(`LOCAL.md` says where it is).
+
 ---
 
 <!-- pinned from repo-template md/governance/POLICY.md @ 0232674; refresh from the template, do not edit by hand -->
