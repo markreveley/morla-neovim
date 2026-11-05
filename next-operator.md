@@ -10,5 +10,5 @@ Read with [`next-agents.md`](next-agents.md).
 
 ## To do
 1. Restart Neovim, then run `:checkhealth morla`: it should show `claude` found.
-2. Use it on Markdown for a few days: `q:`, type an instruction, `<C-g>`, read the line, Enter (or edit first). Try `select line 14` first.
-3. Report back the translations that were wrong or slow. The ones you ran are in `~/.local/share/nvim/morla/history.jsonl`; the ones you discarded are not, so note those by hand.
+2. Use it on Markdown for a few days: `q:`, type what you want, `<C-g>`, read the words beside the command, Enter. If it did the wrong thing, type what went wrong ("didn't work, rerun") and `<C-g>` again.
+3. Tell the agent when you've used it for a while; the history file holds what it needs.
