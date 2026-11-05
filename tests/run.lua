@@ -131,6 +131,13 @@ test('history: the SCHEMA.md example loads', function()
   eq({ recs[3].retry_of, recs[3].instruction, recs[3].ok }, { recs[1].id, recs[1].instruction, true })
 end)
 
+test('strip_redirect: only a leading window jump', function()
+  local morla = require('morla')
+  eq(morla.strip_redirect('call win_gotoid(1003) | 7d'), '7d')
+  eq(morla.strip_redirect('7d'), '7d')
+  eq(morla.strip_redirect('echo "call win_gotoid(1) | x"'), 'echo "call win_gotoid(1) | x"')
+end)
+
 test('label: flags first, then the explanation', function()
   local morla = require('morla')
   eq({ morla.label('%!sort', 'sorts the file') }, { '⚠ shell · sorts the file', 'WarningMsg' })
