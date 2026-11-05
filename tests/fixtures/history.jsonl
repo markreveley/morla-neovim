@@ -1,0 +1,2 @@
+{"ts":"2026-11-05T18:02:11Z","cwd":"~/dev/repos/notes","filetype":"markdown","instruction":"delete every line containing TODO","generated":"g/TODO/d","command":"g/TODO/d","ok":true}
+{"ts":"2026-11-05T18:04:40Z","cwd":"~/dev/repos/notes","filetype":"markdown","instruction":"sort the selected lines","generated":"'<,'>sort u","command":"'<,'>sort","ok":false,"error":"E20: Mark not set"}
