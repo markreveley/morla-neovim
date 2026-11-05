@@ -45,6 +45,7 @@ sleep 0.5
 check 'command ran' "$(ev "join(getline(1, '\$'), ',')")" '# Notes,keep'
 check 'history records it' "$(last ok)" 'true'
 check 'record keeps the explanation' "$(last explain)" 'deletes every line with TODO'
+check 'record says the buffer changed' "$(last changed)" 'true'
 first_id=$(last id)
 
 # 3. From the : line: <C-g> hands the line to q: and translates there. A
@@ -86,6 +87,7 @@ send 'q:k<C-g>'
 sleep 1
 check 'fix request says so' "$(has 'Instruction: That failed. Fix it.' "$d/request.txt")" 0
 check 'fix request carries the error' "$(has 'Result: failed: E492' "$d/request.txt")" 0
+check 'a failed run changed nothing' "$(last changed)" 'false'
 check 'fixed command in place' "$(ev "getline('.')")" 'echo "fixed"'
 check 'a failed run is not marked again' "$(ev "json_decode(readfile('$d/history.jsonl')[-1]).command")" 'nosuchcommand'
 

@@ -52,6 +52,9 @@ test('build: context, examples, last run, instruction in order', function()
   local b = s:find('Command: only', 1, true)
   local c = s:find('Last command run in this session:\nInstruction: delete todos\nCommand: g/TODO/dd\nResult: failed: E492', 1, true)
   local d = s:find("Instruction: didn't work, rerun$")
+  local s2 = prompt.build({ instruction = 'x', context = 'C',
+    last = { instruction = 'set date', command = 'g/^Date/d', ok = true, changed = false } })
+  assert(s2:find('Result: ran without error but changed nothing in the buffer', 1, true), s2)
   assert(a and b and c and d and a < b and b < c and c < d, s)
 end)
 

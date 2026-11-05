@@ -23,6 +23,7 @@ function M.gather(win)
   local buf = vim.api.nvim_win_get_buf(win)
   local cursor = vim.api.nvim_win_get_cursor(win)
   local ctx = {
+    buf = buf, -- not sent; used to tell whether a run changed the buffer
     cwd = vim.fn.fnamemodify(vim.fn.getcwd(), ':~'),
     file = relname(buf),
     filetype = vim.bo[buf].filetype,

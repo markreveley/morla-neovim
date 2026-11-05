@@ -11,13 +11,14 @@ M.system = table.concat({
   'Use the editor context you are given. When the instruction refers to a selection, use the range \'<,\'>.',
   'Run shell commands (:!, system(), :terminal) only when the instruction asks for a program or the shell.',
   'For today\'s date or time use strftime(), never a written-out date.',
+  'In :s, an expression replacement must begin with \\= and covers the whole replacement: s/\\(Date: \\).*/\\=submatch(1) . strftime("%Y-%m-%d")/.',
   'If the instruction is already a valid Ex command, return it unchanged.',
   'When feedback is true, write the command the earlier instruction should have had;',
   'if the last command changed text the wrong way, begin with "undo | ". Say so in explain.',
 }, ' ')
 
 -- req: { instruction, context = <rendered text>, examples = { {instruction, command} },
---        last = { instruction, command, ok, error } | nil }
+--        last = { instruction, command, ok, error, changed } | nil }
 function M.build(req)
   local out = { 'Editor context:', req.context, '' }
   if req.examples and #req.examples > 0 then
@@ -32,7 +33,15 @@ function M.build(req)
     table.insert(out, 'Last command run in this session:')
     table.insert(out, 'Instruction: ' .. req.last.instruction)
     table.insert(out, 'Command: ' .. req.last.command)
-    table.insert(out, 'Result: ' .. (req.last.ok and 'ran without error' or ('failed: ' .. (req.last.error or '?'))))
+    local result
+    if not req.last.ok then
+      result = 'failed: ' .. (req.last.error or '?')
+    elseif req.last.changed == false then
+      result = 'ran without error but changed nothing in the buffer'
+    else
+      result = 'ran without error' .. (req.last.changed and ' and changed the buffer' or '')
+    end
+    table.insert(out, 'Result: ' .. result)
     table.insert(out, '')
   end
   table.insert(out, 'Instruction: ' .. req.instruction)

@@ -15,8 +15,9 @@ local state = {
   origin_win = nil, -- the window `q:` was opened from
   translate_on_enter = false, -- set by the `:` line key, read by CmdwinEnter
   pending = nil, -- the last translation, until it runs or is dropped
-  last = nil, -- the last translation that ran this session: { id, instruction, command, ok, error }
+  last = nil, -- the last translation that ran this session: { id, instruction, command, ok, error, changed }
   hist = 0, -- `:` history number before the pending command could run
+  tick = nil, -- changedtick of the origin buffer at the same moment
 }
 M._state = state
 
@@ -41,7 +42,9 @@ local function request(text, win)
     instruction = text,
     context = context.render(ctx),
     examples = history.examples(where(ctx), config.options.examples),
-    last = last and { instruction = last.instruction, command = last.command, ok = last.ok, error = last.error },
+    last = last and {
+      instruction = last.instruction, command = last.command, ok = last.ok, error = last.error, changed = last.changed,
+    },
   }, ctx
 end
 
@@ -50,6 +53,7 @@ end
 local function accept(req, reply, ctx)
   local p = {
     instruction = req.instruction, generated = reply.command, explain = reply.explain, where = where(ctx),
+    origin_buf = ctx.buf,
   }
   local last = state.last
   if reply.feedback and last then
@@ -137,6 +141,11 @@ local function check()
   local ran = vim.fn.histget(':', -1)
   if ran ~= p.generated and ran ~= p.final then return end
   local err = vim.v.errmsg
+  local b = p.origin_buf
+  local changed = nil
+  if b and state.tick and vim.api.nvim_buf_is_valid(b) then
+    changed = vim.api.nvim_buf_get_changedtick(b) ~= state.tick
+  end
   local rec = {
     id = history.new_id(),
     ts = os.date('!%Y-%m-%dT%H:%M:%SZ'),
@@ -149,9 +158,12 @@ local function check()
     retry_of = p.retry_of,
     ok = err == '',
     error = err ~= '' and err or nil,
+    changed = changed,
   }
   history.append(rec)
-  state.last = { id = rec.id, instruction = rec.instruction, command = ran, ok = rec.ok, error = rec.error }
+  state.last = {
+    id = rec.id, instruction = rec.instruction, command = ran, ok = rec.ok, error = rec.error, changed = changed,
+  }
   if not rec.ok then
     local key = config.options.key
     notify('that command failed.'
@@ -163,6 +175,8 @@ end
 local function arm()
   if not state.pending then return end
   state.hist = vim.fn.histnr(':')
+  local b = state.pending.origin_buf
+  state.tick = (b and vim.api.nvim_buf_is_valid(b)) and vim.api.nvim_buf_get_changedtick(b) or nil
   vim.v.errmsg = ''
   vim.schedule(check)
 end
