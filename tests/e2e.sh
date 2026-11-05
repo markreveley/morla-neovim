@@ -11,7 +11,7 @@ trap 'nvim --server "$sock" --remote-send "<C-\\><C-n>:qa!<CR>" >/dev/null 2>&1 
 printf '# Notes\nTODO one\nkeep\nTODO two\n' > "$d/notes.md"
 nvim --headless --clean --listen "$sock" \
   -c "set rtp^=$repo" -c 'runtime plugin/morla.lua' \
-  -c "lua require('morla').setup({ cmd = { 'bash', '$repo/tests/fake-claude.sh' }, history_file = '$d/history.jsonl' })" \
+  -c "lua require('morla').setup({ cmd = { 'bash', '$repo/tests/fake-claude.sh' }, history_file = '$d/history.jsonl', stay = false })" \
   "$d/notes.md" >/dev/null 2>&1 &
 for _ in $(seq 50); do [ -S "$sock" ] && break; sleep 0.1; done
 
@@ -96,6 +96,21 @@ echo '{"command": "%!sort", "explain": "sorts the file", "feedback": false}' > "
 send '<Esc>Gosort the file<C-g>'
 sleep 1
 check 'risk flag shown' "$(vt)" '  ⚠ shell · sorts the file'
+
+# 7. With stay on, q: opens again after a run, past commands show their
+#    instruction, and a :s does not leave the buffer lit up by its pattern.
+send '<Esc>:q<CR>'
+sleep 0.3
+send ":lua require('morla.config').options.stay = true<CR>"
+printf '%s\n' '{"command": "%s/.*/\\U&/", "explain": "uppercases every line", "feedback": false}' > "$d/reply.txt"
+send 'q:iuppercase everything<C-g>'
+sleep 1
+send '<Esc><CR>'
+sleep 1
+check 'q: open again after the run' "$(ev 'getcmdwintype()')" ':'
+check 'search highlight cleared' "$(ev 'v:hlsearch')" '0'
+check 'past command shows its instruction' "$(ev "get(get(nvim_buf_get_extmarks(0, -1, [line('.')-2, 0], [line('.')-2, -1], {'details': v:true}), 0, [0, 0, 0, {'virt_text': [['']]}])[3].virt_text[0], 0)")" '  ← uppercase everything'
+check 'failed command marked in q:' "$(ev "len(filter(nvim_buf_get_extmarks(0, -1, 0, -1, {'details': v:true}), 'v:val[3].virt_text[0][0] =~ \"✗ break something\"'))")" '1'
 
 echo "e2e: $fails failed"
 [ "$fails" -eq 0 ]

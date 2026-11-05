@@ -18,6 +18,8 @@ M.defaults = {
   -- The key that translates the line under the cursor in `q:`, and on the
   -- `:` line (which hands the line to `q:` first). False turns it off.
   key = '<C-g>',
+  -- After a command from `q:` runs, open `q:` again (only over a normal file buffer).
+  stay = true,
   history_file = vim.fn.stdpath('data') .. '/morla/history.jsonl',
   examples = 8, -- past translations sent with each request
   recent_commands = 20, -- lines of `:` history sent with each request
