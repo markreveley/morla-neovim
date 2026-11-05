@@ -53,13 +53,27 @@ local function clean(cmd)
   return cmd ~= '' and cmd or nil
 end
 
+-- A reply line that reads as English, not a command: six or more words
+-- nearly all plain, or a short sentence of plain words ending in . ? or !.
+local function is_prose(line)
+  local words, plain = 0, 0
+  for w in line:gmatch('%S+') do
+    words = words + 1
+    if w:match("^[%a'’,;]+[.!?:]?$") then plain = plain + 1 end
+  end
+  if words >= 6 and plain / words >= 0.8 then return true end
+  return words >= 3 and plain == words and line:match('[.?!]$') ~= nil
+end
+
 -- The old reading: the reply is the command itself, possibly fenced.
+-- Prose is refused: running it gives E492 and teaches nothing.
 local function parse_plain(text)
   local lines = {}
   for line in (text .. '\n'):gmatch('(.-)\r?\n') do
     line = vim.trim(line)
     if line ~= '' and not line:match('^```') then
       line = clean(line:gsub('^Command:%s*', ''))
+      if line and is_prose(line) then return nil end
       if line then table.insert(lines, line) end
     end
   end

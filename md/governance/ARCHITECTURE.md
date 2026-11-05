@@ -1,6 +1,6 @@
 # morla-neovim: architecture
 
-> Status: built · 2026-11-05 · describes what is built (with feedback and explanations, D8–D12)
+> Status: built · 2026-11-05 · describes what is built (to D14)
 
 ## 1. Thesis
 
@@ -50,7 +50,11 @@ ones the operator kept teach the next request.
 7. When `q:` closes or the `:` line is left, the `:` history number says
    whether a command ran. If it is the translation, or the operator's edit
    of it, a record is appended with `ok` from `v:errmsg` and `changed` from
-   the origin buffer's `changedtick` (D4).
+   the origin buffer's `changedtick` (D4). If the run changed the last
+   search pattern, `v:hlsearch` is cleared; with `stay`, `q:` opens again
+   (D13).
+8. Each time `q:` opens, lines that match a past run show its instruction
+   beside them (D14).
 
 ## 4. Boundaries and invariants
 
@@ -172,6 +176,29 @@ selection were sent: the lines go to the same Claude the operator already
 uses, from a file open in their own editor. Lost: sending only the cursor
 line, which kept requests small and failed on most structural edits. From
 feedback-and-explain D5.
+
+
+### D13. After a run from `q:`, `q:` opens again
+
+The operator works in `q:`: run, look, say what went wrong, run again.
+Reopening saves the `q:` keystroke each time, and puts the run's line, with
+its note (D14), in front of them for a complaint. Only when the run leaves
+them in normal mode in a normal file buffer, so a command that opens a
+terminal is not covered by `q:`. `stay = false` turns it off. From the
+operator's first use (`../tested/2026-11-05-2010-live.md`).
+
+### D14. Past commands carry their instruction in `q:`
+
+`q:` holds only what ran, so a translation's English was gone once it ran.
+The history file has both; on `CmdwinEnter` each line that matches a run's
+command gets the instruction beside it, `✗` when the run failed or was
+marked wrong. The latest run of a command wins. Lost: adding the
+instruction to the `:` history as its own line, which Enter would run as a
+command.
+
+Also from that use: when a reply is not JSON, the bare-command reading
+(D8) refuses a line that reads as English, so a model's explanation of why
+it cannot answer is never run as a command.
 
 ---
 

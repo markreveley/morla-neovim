@@ -57,6 +57,7 @@ nor a mark, is skipped.
 |---|---|---|
 | `cmd` | `claude -p --model sonnet --tools "" --setting-sources "" …` | the model call, as a list; morla appends `--system-prompt <text>`. Replaces the default whole |
 | `timeout` | `60000` | ms before the call is stopped |
+| `stay` | `true` | after a command from `q:` runs, open `q:` again, if back in a normal file buffer |
 | `key` | `"<C-g>"` | translate in `q:`; on the `:` line, hand the line to `q:`. `false` for no key |
 | `history_file` | see §1 | |
 | `examples` | `8` | past runs sent with a request |

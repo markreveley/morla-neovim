@@ -12,9 +12,9 @@ Read with [`next-operator.md`](next-operator.md). Rewrite both at the end of eac
 Plain English in `q:` turned into an Ex command in place, explained in plain English, corrected by plain-English complaints, learning from what the operator kept. The operator does not read Vimscript. Design: [`md/governance/ARCHITECTURE.md`](md/governance/ARCHITECTURE.md); rules: [`md/governance/POLICY.md`](md/governance/POLICY.md); options and history format: [`md/governance/SCHEMA.md`](md/governance/SCHEMA.md).
 
 ## State
-- Built and on `main`: translation in `q:` and from the `:` line, `:Morla`, `:MorlaHistory`, explanations beside each command, complaints that mark the last run wrong and retry, the buffer's numbered lines in each request, `changed` per run, Sonnet by default. Plan [`feedback-and-explain`](md/plans/2026-11-05-feedback-and-explain/feedback-and-explain.md) is done; its decisions are ARCHITECTURE D8–D12.
-- Tests pass: 32 unit, 28 end to end (P4). Live run against `claude -p`, headless: [`md/tested/2026-11-05-1915-live.md`](md/tested/2026-11-05-1915-live.md), which also lists what it did not test.
-- Loaded in the operator's Neovim from the main checkout (`~/.dotfiles/nvim/.config/nvim/init.lua`, `dir = "~/dev/repos/morla-neovim"`); a Neovim restart picks up `main`. The operator has not used it live yet.
+- Built and on `main`: translation in `q:` and from the `:` line, `:Morla`, `:MorlaHistory`, explanations beside each command, complaints that mark the last run wrong and retry, the buffer's numbered lines in each request, `changed` per run, Sonnet by default, `q:` reopening after a run with each past command's instruction beside it (ARCHITECTURE D13–D14). Plan [`feedback-and-explain`](md/plans/2026-11-05-feedback-and-explain/feedback-and-explain.md) is done; its decisions are ARCHITECTURE D8–D12.
+- Tests pass: 34 unit, 32 end to end (P4). Live runs against `claude -p`, headless: [`md/tested/2026-11-05-1915-live.md`](md/tested/2026-11-05-1915-live.md), [`md/tested/2026-11-05-2010-live.md`](md/tested/2026-11-05-2010-live.md); each lists what it did not test.
+- Loaded in the operator's Neovim from the main checkout (`~/.dotfiles/nvim/.config/nvim/init.lua`, `dir = "~/dev/repos/morla-neovim"`); a Neovim restart picks up `main`. The operator's first use (5 Nov 2026) drove D13–D14; they need a restart to get them.
 
 ## Environment facts
 - Control+G was taken system-wide by a Gemini shortcut; the operator removed it on 5 Nov 2026. If `<C-g>` does nothing in `q:`, check `:checkhealth morla`, then for an outside shortcut.

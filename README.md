@@ -17,7 +17,11 @@ open a vertical split with a terminal in ~/dev/repos/x running htop
 vertical new | lcd ~/dev/repos/x | terminal htop    ⚠ shell · opens htop in a split
 ```
 
-- **In place.** The command replaces the line in `q:`; Enter runs it.
+- **In place.** The command replaces the line in `q:`; Enter runs it, and
+  `q:` opens again so you can carry on (`Ctrl-C` or `:q` leaves; option
+  `stay = false` turns this off). Past commands morla wrote show their
+  instruction beside them (`← make the first paragraph all caps`), `✗` for
+  one that failed or that you said was wrong.
 - **Explained.** Beside each command, a few words of plain English saying
   what it does. The words come from the model and can be wrong along with
   the command; the `⚠` flags do not depend on the model.
@@ -36,6 +40,10 @@ vertical new | lcd ~/dev/repos/x | terminal htop    ⚠ shell · opens htop in a
   filetype first. `:MorlaHistory` picks one and puts it on the `:` line.
 - **Flags.** A command that runs the shell, writes or deletes files, touches
   many files or runs Lua gets a `⚠`.
+- **No leftover highlight.** A substitution leaves its pattern as Vim's last
+  search, which `hlsearch` paints across the buffer (`.*` paints all of
+  it); morla clears that highlight after its own commands. `:noh` clears
+  it any other time.
 
 Requests go through `claude -p` (Claude Code's print mode) with Sonnet,
 using your existing Claude login; no API key. A translation takes 3 to 5

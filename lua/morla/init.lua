@@ -9,6 +9,7 @@ local client = require('morla.client')
 local M = {}
 
 local ns = vim.api.nvim_create_namespace('morla')
+local ns_notes = vim.api.nvim_create_namespace('morla-notes') -- instructions beside past commands in `q:`
 
 local state = {
   setup = false,
@@ -18,6 +19,7 @@ local state = {
   last = nil, -- the last translation that ran this session: { id, instruction, command, ok, error, changed }
   hist = 0, -- `:` history number before the pending command could run
   tick = nil, -- changedtick of the origin buffer at the same moment
+  search = nil, -- the last search pattern at the same moment
 }
 M._state = state
 
@@ -90,6 +92,7 @@ function M.translate_cmdwin()
 
   local req, ctx = request(text, state.origin_win)
   vim.api.nvim_buf_clear_namespace(buf, ns, row, row + 1)
+  vim.api.nvim_buf_clear_namespace(buf, ns_notes, row, row + 1)
   local id = mark(buf, row, req.instruction == M.fix_text and 'morla: fixing…' or 'morla: translating…', 'Comment')
 
   client.translate(req, function(reply, err)
@@ -111,6 +114,24 @@ function M.translate_cmdwin()
       vim.api.nvim_win_set_cursor(win, { pos[1] + 1, #cmd })
     end
   end)
+end
+
+-- In `q:`, the instruction beside each past command morla wrote, from the
+-- history file; ✗ for one that failed or was called wrong.
+function M.annotate(buf)
+  vim.api.nvim_buf_clear_namespace(buf, ns_notes, 0, -1)
+  local by_command = {}
+  for _, r in ipairs(history.load()) do by_command[r.command] = r end
+  if next(by_command) == nil then return end
+  for i, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+    local r = by_command[line]
+    if r then
+      vim.api.nvim_buf_set_extmark(buf, ns_notes, i - 1, 0, {
+        virt_text = { { '  ' .. (r.ok and '← ' or '✗ ') .. r.instruction, r.ok and 'Comment' or 'DiagnosticWarn' } },
+        virt_text_pos = 'eol',
+      })
+    end
+  end
 end
 
 -- `:Morla <instruction>`: translate, then put the command on the `:` line.
@@ -164,6 +185,16 @@ local function check()
   state.last = {
     id = rec.id, instruction = rec.instruction, command = ran, ok = rec.ok, error = rec.error, changed = changed,
   }
+  -- A :s or :g leaves its pattern as the last search; `.*` would light up
+  -- the whole buffer. Same effect as :nohlsearch, allowed from a callback.
+  if vim.fn.getreg('/') ~= state.search then vim.v.hlsearch = 0 end
+  if config.options.stay and p.buf then
+    vim.schedule(function()
+      if vim.fn.mode() == 'n' and vim.bo.buftype == '' and vim.fn.getcmdwintype() == '' then
+        vim.api.nvim_feedkeys('q:', 'n', false)
+      end
+    end)
+  end
   if not rec.ok then
     local key = config.options.key
     notify('that command failed.'
@@ -175,6 +206,7 @@ end
 local function arm()
   if not state.pending then return end
   state.hist = vim.fn.histnr(':')
+  state.search = vim.fn.getreg('/')
   local b = state.pending.origin_buf
   state.tick = (b and vim.api.nvim_buf_is_valid(b)) and vim.api.nvim_buf_get_changedtick(b) or nil
   vim.v.errmsg = ''
@@ -208,6 +240,7 @@ function M.setup(opts)
     callback = function(ev)
       local prev = vim.fn.win_getid(vim.fn.winnr('#'))
       state.origin_win = prev ~= 0 and prev or nil
+      M.annotate(ev.buf)
       if key then
         vim.keymap.set({ 'n', 'i' }, key, M.translate_cmdwin,
           { buffer = ev.buf, desc = 'morla: translate this line' })
