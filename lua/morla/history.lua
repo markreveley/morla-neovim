@@ -1,8 +1,15 @@
 -- The history file: one JSON object per line, appended, never rewritten.
--- Format in md/governance/SCHEMA.md.
+-- A line is a run, or a mark that calls an earlier run wrong. Format in
+-- md/governance/SCHEMA.md.
 local config = require('morla.config')
 
 local M = {}
+
+local seq = 0
+function M.new_id()
+  seq = seq + 1
+  return string.format('%s-%x-%d', os.date('!%Y%m%dT%H%M%S'), vim.uv.hrtime() % 0x1000000, seq)
+end
 
 function M.append(record)
   local path = config.options.history_file
@@ -14,18 +21,36 @@ function M.append(record)
   return true
 end
 
+-- Mark run `id` wrong, with the operator's words.
+function M.mark_wrong(id, note)
+  return M.append({ ts = os.date('!%Y-%m-%dT%H:%M:%SZ'), marks = id, ok = false, note = note })
+end
+
+-- The runs, oldest first, with marks applied: a marked run has ok = false
+-- and the mark's note.
 function M.load()
   local f = io.open(config.options.history_file, 'r')
   if not f then return {} end
-  local out = {}
+  local runs, marks = {}, {}
   for line in f:lines() do
     local ok, rec = pcall(vim.json.decode, line)
-    if ok and type(rec) == 'table' and rec.command and rec.instruction then
-      table.insert(out, rec)
+    if ok and type(rec) == 'table' then
+      if type(rec.marks) == 'string' then
+        marks[rec.marks] = rec
+      elseif rec.command and rec.instruction then
+        table.insert(runs, rec)
+      end
     end
   end
   f:close()
-  return out
+  for _, r in ipairs(runs) do
+    local m = r.id and marks[r.id]
+    if m then
+      r.ok = false
+      r.note = m.note
+    end
+  end
+  return runs
 end
 
 -- Newest first, the same project and filetype ahead of the rest, one entry
@@ -49,7 +74,8 @@ function M.rank(records, ctx)
   return out
 end
 
--- The best n translations that ran without error, as prompt examples.
+-- The best n runs the operator kept (no error, not marked wrong), as
+-- prompt examples.
 function M.examples(ctx, n)
   local ok = vim.tbl_filter(function(r) return r.ok end, M.load())
   local out = {}

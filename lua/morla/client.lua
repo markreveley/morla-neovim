@@ -11,7 +11,7 @@ local function workdir()
   return dir
 end
 
--- cb(command | nil, error | nil), called on the main loop.
+-- cb(reply | nil, error | nil), called on the main loop; reply as prompt.parse returns it.
 function M.translate(req, cb)
   local opts = config.options
   local argv = vim.list_extend(vim.deepcopy(opts.cmd), { '--system-prompt', prompt.system })
@@ -26,9 +26,9 @@ function M.translate(req, cb)
       if res.signal == 15 or res.code == 124 then msg = 'timed out' end
       return cb(nil, msg ~= '' and msg or ('exit ' .. res.code))
     end
-    local cmd = prompt.parse(res.stdout)
-    if not cmd then return cb(nil, 'empty reply') end
-    cb(cmd)
+    local reply = prompt.parse(res.stdout)
+    if not reply then return cb(nil, 'empty reply') end
+    cb(reply)
   end))
   if not ok then cb(nil, tostring(err)) end
 end

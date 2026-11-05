@@ -1,2 +1,4 @@
-{"ts":"2026-11-05T18:02:11Z","cwd":"~/dev/repos/notes","filetype":"markdown","instruction":"delete every line containing TODO","generated":"g/TODO/d","command":"g/TODO/d","ok":true}
-{"ts":"2026-11-05T18:04:40Z","cwd":"~/dev/repos/notes","filetype":"markdown","instruction":"sort the selected lines","generated":"'<,'>sort u","command":"'<,'>sort","ok":false,"error":"E20: Mark not set"}
+{"id":"20261105T180211-a1-1","ts":"2026-11-05T18:02:11Z","cwd":"~/dev/repos/notes","filetype":"markdown","instruction":"delete every line containing TODO","generated":"g/TODO.*/d","command":"g/TODO.*/d","explain":"deletes every line with TODO","ok":true}
+{"id":"20261105T180440-b2-2","ts":"2026-11-05T18:04:40Z","cwd":"~/dev/repos/notes","filetype":"markdown","instruction":"sort the selected lines","generated":"'<,'>sort u","command":"'<,'>sort","explain":"sorts the selection, dropping duplicates","ok":false,"error":"E20: Mark not set"}
+{"ts":"2026-11-05T18:05:02Z","marks":"20261105T180211-a1-1","ok":false,"note":"deleted the headings too"}
+{"id":"20261105T180519-c3-3","ts":"2026-11-05T18:05:19Z","cwd":"~/dev/repos/notes","filetype":"markdown","instruction":"delete every line containing TODO","generated":"undo | g/^- TODO/d","command":"undo | g/^- TODO/d","explain":"undoes that, then deletes only TODO list items","retry_of":"20261105T180211-a1-1","ok":true}
