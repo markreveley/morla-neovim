@@ -142,6 +142,11 @@ test('context: file, cursor, selection, history', function()
   eq(ctx.selection, { from = 2, to = 3, text = { 'a', 'b' } })
   local text = context.render(ctx)
   assert(text:find("lines 2-3", 1, true) and text:find('  only', 1, true), text)
+  assert(text:find('Buffer lines 1-4 of 4', 1, true) and text:find('\n3\tb\n', 1, true), text)
+  config.options.buffer_lines = 2
+  local w = context.gather().text
+  config.options.buffer_lines = config.defaults.buffer_lines
+  eq({ w.from, w.to, w.lines }, { 3, 4, { 'b', 'c' } })
 end)
 
 for _, t in ipairs(tests) do

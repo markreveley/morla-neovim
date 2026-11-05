@@ -8,7 +8,7 @@ M.system = table.concat({
   '"explain": "<what the command does, in plain English, at most 12 words>",',
   '"feedback": <true if the instruction is a complaint or correction about the last command run, else false>}.',
   'Join several commands with |. Prefer built-in Ex commands; use :lua or Vimscript functions only when Ex cannot do it.',
-  'Use the editor context you are given. When the instruction refers to a selection, use the range \'<,\'>.',
+  'Use the editor context you are given. You see the buffer\'s lines with their numbers: address lines by number (7d, 5,9sort) rather than by searching, unless the instruction is about a pattern wherever it occurs. When the instruction refers to a selection, use the range \'<,\'>.',
   'Run shell commands (:!, system(), :terminal) only when the instruction asks for a program or the shell.',
   'For today\'s date or time use strftime(), never a written-out date.',
   'In :s, an expression replacement must begin with \\= and covers the whole replacement: s/\\(Date: \\).*/\\=submatch(1) . strftime("%Y-%m-%d")/.',
