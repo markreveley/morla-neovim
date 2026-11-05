@@ -9,6 +9,6 @@ updated: 2026-11-05
 Read with [`next-agents.md`](next-agents.md).
 
 ## To do
-1. Decide whether the GitHub repo `markreveley/morla-neovim` is public or private; the agent creates it and pushes.
-2. Add the plugin to the Neovim config in `~/.dotfiles/nvim/` (lazy.nvim: `{ dir = '~/dev/repos/morla-neovim', opts = {} }` until it is on GitHub).
-3. Use it for a few days on Markdown; the failures land in `~/.local/share/nvim/morla/history.jsonl` and drive the prompt tuning.
+1. Restart Neovim, then run `:checkhealth morla`: it should show `claude` found.
+2. Use it on Markdown for a few days: `q:`, type an instruction, `<C-g>`, read the line, Enter (or edit first). Try `select line 14` first.
+3. Report back the translations that were wrong or slow. The ones you ran are in `~/.local/share/nvim/morla/history.jsonl`; the ones you discarded are not, so note those by hand.
