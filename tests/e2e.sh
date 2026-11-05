@@ -112,5 +112,31 @@ check 'search highlight cleared' "$(ev 'v:hlsearch')" '0'
 check 'past command shows its instruction' "$(ev "get(get(nvim_buf_get_extmarks(0, -1, [line('.')-2, 0], [line('.')-2, -1], {'details': v:true}), 0, [0, 0, 0, {'virt_text': [['']]}])[3].virt_text[0], 0)")" '  ← uppercase everything'
 check 'failed command marked in q:' "$(ev "len(filter(nvim_buf_get_extmarks(0, -1, 0, -1, {'details': v:true}), 'v:val[3].virt_text[0][0] =~ \"✗ break something\"'))")" '1'
 
+# 8. q: opened from a side panel acts on the file window behind it.
+send '<Esc>:q<CR>'
+sleep 0.3
+send ":lua require('morla.config').options.stay = false<CR>"
+filewin=$(ev 'win_getid()')
+send ':topleft vnew | setlocal buftype=nofile | file panel<CR>'
+sleep 0.3
+check 'in the panel' "$(ev '&buftype')" 'nofile'
+echo '{"command": "1d", "explain": "deletes line 1", "feedback": false}' > "$d/reply.txt"
+send 'q:idelete the first line<C-g>'
+sleep 1
+check 'command jumps to the file window first' "$(ev "getline('.')")" "call win_gotoid($filewin) | 1d"
+check 'request describes the file, not the panel' "$(has 'Current file: .*notes.md' "$d/request.txt")" 0
+send '<Esc><CR>'
+sleep 0.5
+check 'ran in the file window' "$(ev 'win_getid()')" "$filewin"
+check 'history keeps the command without the jump' "$(last command)" '1d'
+send ':wincmd h<CR>'
+sleep 0.3
+send ":lua require('morla').open()<CR>"
+sleep 0.5
+check 'open() from the panel opens q: over the file window' "$(ev 'getcmdwintype()')" ':'
+send '<Esc>:q<CR>'
+sleep 0.3
+check 'back in the file window' "$(ev 'win_getid()')" "$filewin"
+
 echo "e2e: $fails failed"
 [ "$fails" -eq 0 ]

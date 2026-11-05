@@ -1,6 +1,6 @@
 # morla-neovim: architecture
 
-> Status: built · 2026-11-05 · describes what is built (to D14)
+> Status: built · 2026-11-05 · describes what is built (to D15)
 
 ## 1. Thesis
 
@@ -30,7 +30,8 @@ ones the operator kept teach the next request.
 1. The operator types an instruction on a line in `q:` and presses the key
    (`<C-g>`). On the `:` line the same key opens `q:` with the line (the
    `'cedit'` key) and continues there (D3).
-2. `context.gather` reads the window `q:` was opened from: file, filetype,
+2. `context.gather` reads the window `q:` was opened from, or the last file
+   window when that is a side panel (D15): file, filetype,
    cursor position, the buffer's lines with their numbers (up to 300,
    around the cursor; D12), the last visual selection (up to 20 lines), the
    listed buffers, the last 20 `:` commands, the working directory.
@@ -199,6 +200,22 @@ command.
 Also from that use: when a reply is not JSON, the bare-command reading
 (D8) refuses a line that reads as English, so a model's explanation of why
 it cannot answer is never run as a command.
+
+
+### D15. A side panel stands aside for the last file window
+
+When `q:` is opened from a panel (buftype `nofile`, `nowrite` or `prompt`,
+or a floating window: nvim-tree, a scratch buffer), the request describes
+the last file window entered instead, and the command written into `q:`
+starts with `call win_gotoid(<that window>) | `, because `q:` returns to
+the panel and the command runs there. The history and the notes in `q:`
+drop the prefix. Which recent windows are panels is decided when `q:`
+opens, not when they are entered, since a plugin may set `buftype` after
+the window is entered. `require('morla').open()` is the way in for a
+mapping: from a panel it moves to the file window first, then opens `q:` in
+insert mode, so no prefix is needed. In nvim-tree `q:` cannot be typed at
+all (`q` closes the tree). Lost: leaving it to the operator, whose requests
+from the tree described the tree. From `../tested/2026-11-05-2050-live.md`.
 
 ---
 

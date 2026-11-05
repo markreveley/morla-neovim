@@ -67,8 +67,9 @@ nor a mark, is skipped.
 
 ## 3. Readers
 
-The operator's Neovim config reads §2 and the commands `:Morla` and
-`:MorlaHistory`; morla itself reads §1. A change to either is a breaking
+The operator's Neovim config reads §2, the commands `:Morla` and
+`:MorlaHistory`, and `require('morla').open()` (no arguments: open `q:`
+ready to type, from the last file window when in a side panel); morla itself reads §1. A change to either is a breaking
 change and is named in the commit's first line.
 
 ---

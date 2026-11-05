@@ -52,6 +52,9 @@ The rules are in `md/governance/POLICY.md`. Gotchas:
 - A live run is easiest the same way: `nvim --headless --listen <sock>`,
   then `nvim --server <sock> --remote-send 'q:i<instruction><C-g>'` and
   `--remote-expr "getline('.')"`.
+- To test a branch inside the operator's own config (lazy.nvim), clearing
+  `package.loaded` is not enough: lazy's loader brings back `main`'s copy.
+  Load the branch's modules with `dofile` into `package.loaded` instead.
 - Vim ranges trip the model: `0/pat/` searches from the cursor, not the top,
   and `0;/pat/` is a range from the top to the match. Check any range idiom
   in Neovim before putting it in the prompt.

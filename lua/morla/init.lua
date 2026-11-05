@@ -13,7 +13,9 @@ local ns_notes = vim.api.nvim_create_namespace('morla-notes') -- instructions be
 
 local state = {
   setup = false,
-  origin_win = nil, -- the window `q:` was opened from
+  origin_win = nil, -- the window a request is about: where `q:` was opened, or the file window behind a panel
+  recent_wins = {}, -- windows entered, newest first; which are panels is decided when used
+  redirect = nil, -- set when `q:` was opened from a panel: the file window commands must run in
   translate_on_enter = false, -- set by the `:` line key, read by CmdwinEnter
   pending = nil, -- the last translation, until it runs or is dropped
   last = nil, -- the last translation that ran this session: { id, instruction, command, ok, error, changed }
@@ -24,6 +26,37 @@ local state = {
 M._state = state
 
 M.fix_text = 'That failed. Fix it.'
+
+-- A side panel (nvim-tree, a scratch or prompt buffer) or a floating window:
+-- not where an edit is meant to land.
+local function is_panel(win)
+  if not (win and vim.api.nvim_win_is_valid(win)) then return true end
+  if vim.api.nvim_win_get_config(win).relative ~= '' then return true end
+  local bt = vim.bo[vim.api.nvim_win_get_buf(win)].buftype
+  return bt == 'nofile' or bt == 'nowrite' or bt == 'prompt'
+end
+
+-- The newest window entered that is not a panel, other than `skip`.
+local function file_win(skip)
+  for _, w in ipairs(state.recent_wins) do
+    if w ~= skip and vim.api.nvim_win_is_valid(w) and not is_panel(w) then return w end
+  end
+end
+
+local function entered(win)
+  for i, w in ipairs(state.recent_wins) do
+    if w == win then table.remove(state.recent_wins, i); break end
+  end
+  table.insert(state.recent_wins, 1, win)
+  state.recent_wins[11] = nil
+end
+
+-- Commands written for a `q:` opened from a panel start by moving to the
+-- file window (ARCHITECTURE D15). The history keeps them without it.
+local redirect_pat = '^call win_gotoid%(%d+%) | '
+function M.strip_redirect(cmd)
+  return (cmd:gsub(redirect_pat, ''))
+end
 
 local function notify(msg, level)
   vim.notify('morla: ' .. msg, level or vim.log.levels.INFO)
@@ -39,7 +72,7 @@ end
 local function request(text, win)
   local ctx = context.gather(win)
   local last = state.last
-  if last and not last.ok and text == last.command then text = M.fix_text end
+  if last and not last.ok and M.strip_redirect(text) == last.command then text = M.fix_text end
   return {
     instruction = text,
     context = context.render(ctx),
@@ -105,10 +138,13 @@ function M.translate_cmdwin()
       return
     end
     local cmd = reply.command
+    if state.redirect and vim.api.nvim_win_is_valid(state.redirect) then
+      cmd = ('call win_gotoid(%d) | %s'):format(state.redirect, cmd)
+    end
     vim.api.nvim_buf_set_lines(buf, pos[1], pos[1] + 1, false, { cmd })
-    local new = mark(buf, pos[1], M.label(cmd, reply.explain))
+    local new = mark(buf, pos[1], M.label(reply.command, reply.explain))
     state.pending = accept(req, reply, ctx)
-    state.pending.buf, state.pending.mark = buf, new
+    state.pending.buf, state.pending.mark, state.pending.generated = buf, new, cmd
     local win = vim.api.nvim_get_current_win()
     if vim.api.nvim_win_get_buf(win) == buf and vim.api.nvim_win_get_cursor(win)[1] == pos[1] + 1 then
       vim.api.nvim_win_set_cursor(win, { pos[1] + 1, #cmd })
@@ -124,7 +160,7 @@ function M.annotate(buf)
   for _, r in ipairs(history.load()) do by_command[r.command] = r end
   if next(by_command) == nil then return end
   for i, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
-    local r = by_command[line]
+    local r = by_command[M.strip_redirect(line)]
     if r then
       vim.api.nvim_buf_set_extmark(buf, ns_notes, i - 1, 0, {
         virt_text = { { '  ' .. (r.ok and '← ' or '✗ ') .. r.instruction, r.ok and 'Comment' or 'DiagnosticWarn' } },
@@ -161,6 +197,7 @@ local function check()
   state.pending = nil
   local ran = vim.fn.histget(':', -1)
   if ran ~= p.generated and ran ~= p.final then return end
+  ran = M.strip_redirect(ran)
   local err = vim.v.errmsg
   local b = p.origin_buf
   local changed = nil
@@ -173,7 +210,7 @@ local function check()
     cwd = p.where.cwd,
     filetype = p.where.filetype,
     instruction = p.instruction,
-    generated = p.generated,
+    generated = M.strip_redirect(p.generated),
     command = ran,
     explain = p.explain,
     retry_of = p.retry_of,
@@ -239,7 +276,12 @@ function M.setup(opts)
     pattern = ':',
     callback = function(ev)
       local prev = vim.fn.win_getid(vim.fn.winnr('#'))
-      state.origin_win = prev ~= 0 and prev or nil
+      prev = prev ~= 0 and prev or nil
+      state.origin_win, state.redirect = prev, nil
+      if is_panel(prev) then
+        local fw = file_win(prev)
+        if fw then state.origin_win, state.redirect = fw, fw end
+      end
       M.annotate(ev.buf)
       if key then
         vim.keymap.set({ 'n', 'i' }, key, M.translate_cmdwin,
@@ -251,6 +293,14 @@ function M.setup(opts)
       end
     end,
   })
+
+  vim.api.nvim_create_autocmd({ 'WinEnter', 'BufWinEnter' }, {
+    group = group,
+    callback = function()
+      if vim.fn.getcmdwintype() == '' then entered(vim.api.nvim_get_current_win()) end
+    end,
+  })
+  entered(vim.api.nvim_get_current_win())
 
   vim.api.nvim_create_autocmd('CmdwinLeave', {
     group = group,
@@ -289,6 +339,17 @@ function M.setup(opts)
     end, { expr = true, replace_keycodes = false, desc = 'morla: translate in q:' })
     state.cmap = key
   end
+end
+
+-- Open `q:` ready to type, from the last file window when the cursor is in
+-- a side panel. For a mapping: vim.keymap.set('n', '<leader>m', require('morla').open).
+function M.open()
+  local cur = vim.api.nvim_get_current_win()
+  if is_panel(cur) then
+    local fw = file_win(cur)
+    if fw then vim.api.nvim_set_current_win(fw) end
+  end
+  vim.api.nvim_feedkeys('q:i', 'n', false)
 end
 
 -- Called from plugin/morla.lua: defaults, unless setup() already ran.

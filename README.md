@@ -57,6 +57,15 @@ Neovim 0.10 or later, and `claude` on your `PATH`. With lazy.nvim:
 { 'markreveley/morla-neovim', opts = {} }
 ```
 
+A key that opens `q:` ready to type, from your file even when the cursor
+is in a side panel such as nvim-tree (where `q` is the tree's own key, so
+`q:` cannot be typed):
+
+```lua
+{ 'markreveley/morla-neovim', opts = {},
+  keys = { { '<leader>m', function() require('morla').open() end, desc = 'morla' } } }
+```
+
 Without a plugin manager, add this folder to `runtimepath`. Options
 (`setup(opts)`) and the history format are in
 [`md/governance/SCHEMA.md`](md/governance/SCHEMA.md). `:checkhealth morla`
@@ -68,6 +77,7 @@ checks the setup.
 |---|---|
 | `q:`, normal or insert | `<C-g>` translates the line under the cursor, or acts on a complaint about the last command |
 | `:` line | `<C-g>` opens `q:` with the line and translates it there |
+| `require('morla').open()` | opens `q:` in insert mode, from your file window if you are in a side panel; for a mapping |
 | `:Morla <instruction>` | translates and puts the command on the `:` line, the explanation as a message |
 | `:MorlaHistory` | picks a past command and puts it on the `:` line |
 
